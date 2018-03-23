@@ -1,7 +1,7 @@
 # If you come from bash you might have to change your $PATH.
 export PATH=$HOME/bin:/usr/local/bin:$PATH
 
-# Path to your oh-my-zsh installation.  
+# Path to your oh-my-zsh installation.
 export ZSH=/Users/danquinn/.oh-my-zsh
 
 # Set name of the theme to load. Optionally, if you set this to "random"
@@ -57,10 +57,8 @@ export ANDROID_HOME=/Users/danquinn/Library/Android/sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/build-tools
 # Aliases
 #alias ansible-playbook="ansible-playbook -i ~/code/infrastructure/bin/ec2.py"
-alias everspring="aem use everspring && source $HOME/.boto/boto_credentials.sh && export AWS_PROFILE_ZSH='everspring'"
-alias everspring-OR="aem use everspring-OR && source $HOME/.boto/boto_credentials.sh && export AWS_PROFILE_ZSH='everspring-OR'"
-alias colloquy_all="aem use colloquy_all && source $HOME/.boto/boto_credentials.sh && export AWS_PROFILE_ZSH='colloquy_all'"
-alias colloquy_s3="aem use colloquy_s3 && source $HOME/.boto/boto_credentials.sh && AWS_PROFILE_ZSH='colloquy_s3'"
+#sanitized aem example alias:
+alias aws_account_name="aem use aws_account_name && souce $HOME/.boto/boto_credentials.sh && export AWS_PROFILE_ZSH='aws_account_name'"
 alias py3="pyenv activate py353"
 alias py2714="pyenv activate py2714"
 alias ans22="pyenv activate ans22"
