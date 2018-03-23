@@ -1,0 +1,392 @@
+# This file goes in ~/.awsam/
+function __aem_active()
+{
+	echo "$AWSAM_ACTIVE_ACCOUNT"
+}
+
+function __aem_active_key()
+{
+	echo "$AWSAM_ACTIVE_KEY"
+}
+
+function __aem_usage()
+{
+	echo "Usage: aem <command> [<args>]"
+	echo
+	echo "Possible commands:"
+	echo
+	echo "  add               Add a new AWS account"
+	echo
+	echo "  remove NAME       Remove the NAME account"
+	echo
+	echo "  key <cmd>"
+	echo "        +->  add [--acct <ACCT>] KEYNAME KEYFILE"
+	echo "        |           Add key to ACCT or default to active one"
+	echo "        +->  remove [--acct <ACCT>] KEYNAME"
+	echo "        |           Remove key from ACCT or default"
+	echo "        +->  use [--default] KEYNAME"
+	echo "                    Use the KEYNAME from the current account"
+	echo "                    Will set the key as the default for the"
+	echo "                    account if the --default option is set"
+	echo
+	echo "  list              List AWS accounts"
+	echo
+	echo "  use [--default] NAME"
+        echo "                    Use the NAME account. Set as default if"
+	echo "                    the option --default is specified"
+	echo
+}
+
+# Fail with error message and print usage
+function __aem_fusage()
+{
+	local MSG="$*"
+
+	if [ -n "$MSG" ]; then
+		printf "ERROR: $MSG\n" >&2
+		# Add a blank between error and usage
+		echo
+	fi
+
+	__aem_usage
+}
+
+# Just print message to standard output
+function __aem_fail()
+{
+	local MSG="$*"
+
+	if [ -n "$MSG" ]; then
+		printf "ERROR: $MSG\n" >&2
+	fi
+}
+
+function __aem_add()
+{
+
+	raem --add
+}
+
+function __aem_remove()
+{
+	if [ $# -ne 1 ]; then
+		__aem_fusage "Remove requires an argument"
+		return 1
+	fi
+
+	local ACCT="$1"
+	if [ "$ACCT" = "$(__aem_active)" ]; then
+		__aem_fail "Can not remove the active account"
+		return 1
+	fi
+
+	raem --remove --account "$ACCT"
+}
+
+function __aem_key_add()
+{
+	local KEYNAME=""
+	local KEYFILE=""
+	local ACCT=""
+
+	while [ $# -gt 0 ]; do
+		if [ "$1" = "--acct" ]; then
+			shift
+			if [ $# -lt 1 ]; then
+				__aem_fusage "--acct requires argument"
+				return 1
+			fi
+
+			ACCT="$1"
+			shift
+			continue
+		fi
+
+		if [ -z "$KEYNAME" ]; then
+			KEYNAME="$1"
+		else
+			KEYFILE="$1"
+		fi
+		shift
+	done
+
+	if [ -z "$KEYNAME" -o -z "$KEYFILE" ]; then
+		__aem_fusage "Insufficient arguments"
+		return 1
+	fi
+
+	if [ -z "$ACCT" ]; then
+		ACCT=$(__aem_active)
+		if [ -z "$ACCT" ]; then
+			__aem_fail "No account specified and none active."
+			return 1
+		fi
+	fi
+
+	raem --import-key --account "$ACCT" --keyname "$KEYNAME" \
+	    --keyfile "$KEYFILE"
+}
+
+function __aem_key_remove()
+{
+	local KEYNAME=""
+	local ACCT=""
+
+	while [ $# -gt 0 ]; do
+		if [ "$1" = "--acct" ]; then
+			shift
+			if [ $# -lt 1 ]; then
+				__aem_fusage "--acct requires argument"
+				return 1
+			fi
+
+			ACCT="$1"
+			shift
+			continue
+		fi
+
+		KEYNAME="$1"
+		shift
+	done
+
+	if [ -z "$KEYNAME" ]; then
+		__aem_fusage "Must specify key to remove"
+		return 1
+	fi
+
+	if [ -z "$ACCT" ]; then
+		ACCT=$(__aem_active)
+		if [ -z "$ACCT" ]; then
+			__aem_fail "No account specified and none active."
+			return 1
+		fi
+	fi
+
+	# Unset active key
+	if [ "$KEYNAME" = "$(__aem_active_key)" ]; then
+		unset AWSAM_ACTIVE_KEY
+	fi
+
+	raem --remove-key --account "$ACCT" --keyname "$KEYNAME"
+}
+
+function __aem_key_use()
+{
+	if [ $# -lt 1 ]; then
+		__aem_fusage "Must specify keyname"
+		return 1
+	fi
+
+	local ACCT
+	local SETDEFAULT=0
+	local KEYNAME=""
+
+	while [ $# -gt 0 ]; do
+		if [ "$1" == "--default" ]; then
+			SETDEFAULT=1
+			shift
+			continue
+		fi
+
+		if [ -n "$KEYNAME" ]; then
+			__aem_fusage "Invalid argument to key use command"
+			return 1
+		fi
+
+		KEYNAME="$1"
+		shift
+	done
+
+	if [ -z "$KEYNAME" ]; then
+		__aem_fusage "Must specify key name"
+		return 1
+	fi
+
+	ACCT=$(__aem_active)
+	if [ -z "$ACCT" ]; then
+		__aem_fail "Must select an account first"
+		return 1
+	fi
+
+	local ENV
+	if [ $SETDEFAULT -ne 0 ]; then
+		# Will set the key as the default
+		ENV=$(raem --environ-key --account $ACCT --default --keyname $KEYNAME)
+	else
+		ENV=$(raem --environ-key --account $ACCT --keyname $KEYNAME)
+	fi
+	if [ $? -ne 0 ]; then
+		__aem_fail "Failed to select key $KEYNAME"
+		return 1
+	fi
+
+	eval $ENV
+	export AWSAM_ACTIVE_KEY=$KEYNAME
+}
+
+function __aem_key()
+{
+	 if [ $# -lt 1 ]; then
+		 __aem_fusage "Key cmd requires an argument"
+		 return 1
+	 fi
+
+	 local key_cmd="$1"
+	 shift
+
+	 case "$key_cmd" in
+	 add)
+		 __aem_key_add "$@"
+		 return $?
+		 ;;
+	 remove)
+		 __aem_key_remove "$@"
+		 return $?
+		 ;;
+	 use)
+		 __aem_key_use "$@"
+		 return $?
+		 ;;
+	 *)
+		 echo "Unknown key command: $key_cmd"
+		 return 1;
+		 ;;
+	 esac
+}
+
+function __aem_list()
+{
+	raem --list
+}
+
+function __aem_use()
+{
+	local ACCT
+	local ENV
+	local SETDEFAULT=0
+
+	while [ $# -gt 0 ]; do
+		if [[ "$1" == "--default" ]]; then
+			SETDEFAULT=1
+			shift
+			continue
+		fi
+
+		if [ -n "$ACCT" ]; then
+			__aem_fusage "Invalid arguments to use command"
+			return 1
+		fi
+
+		ACCT="$1"
+		shift
+	done
+
+	if [ -z "$ACCT" ]; then
+		__aem_fusage "use command requires account name"
+		return 1
+	fi
+
+	if [ $SETDEFAULT -eq 0 ]; then
+		ENV=$(raem --environ --account $ACCT)
+	else
+		ENV=$(raem --environ --default --account $ACCT)
+	fi
+	if [ $? -ne 0 ]; then
+		__aem_fail "No such account: $ACCT"
+		return 1
+	fi
+
+	eval $ENV
+	export AWSAM_ACTIVE_ACCOUNT=$ACCT
+
+	# Clear active key
+	unset AWSAM_ACTIVE_KEY
+
+	# Check if there is a default key
+	DEFAULT=$(raem --account $ACCT --print-default-key)
+	if [ $? -eq 0 ]; then
+		aem key use "$DEFAULT"
+	fi
+
+	# Create IAM credential file that is required by AWS IAM CLI tools
+	CREDENTIALS_FILE="${HOME}/.awsam/credentials.txt"
+
+	touch ${CREDENTIALS_FILE}
+	chmod 0600 ${CREDENTIALS_FILE}
+
+	echo "AWSAccessKeyId=${AWS_ACCESS_KEY_ID}"   >| ${CREDENTIALS_FILE}
+	echo "AWSSecretKey=${AWS_SECRET_ACCESS_KEY}" >> ${CREDENTIALS_FILE}
+	echo "AWSDefaultRegion=${AWS_DEFAULT_REGION}" >> ${CREDENTIALS_FILE}
+
+	# Hack by codebop
+	BOTO_CREDENTIALS="${HOME}/.boto/boto_credentials.sh"
+	touch ${BOTO_CREDENTIALS}
+	chmod 0655 ${BOTO_CREDENTIALS}
+
+	echo "export AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}'"   >| ${BOTO_CREDENTIALS}
+	echo "export AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}'" >> ${BOTO_CREDENTIALS}
+	echo "export AWS_DEFAULT_REGION='${AWS_DEFAULT_REGION}'" >> ${BOTO_CREDENTIALS}
+	#if [ "$ACCT" = "colloquy_all" ] || [ "$ACCT" = "everspring-OR" ]; then
+		#echo "export AWS_DEFAULT_REGION='us-west-2'" >> ${BOTO_CREDENTIALS}
+	#else
+		#echo "export AWS_DEFAULT_REGION='us-east-1'" >> ${BOTO_CREDENTIALS}
+	#fi
+	# 'source' these credentials in your zsh.rc file (in alias after aem use)
+
+	# We're done, so clear the environment. This protects against
+	# leaking AWS creds to other apps.
+	UNSET_ENV=$(raem --environ --account $ACCT --unset)
+	eval $UNSET_ENV
+
+	return 0
+}
+
+function aem()
+{
+
+         if [ $# -lt 1 ]; then
+		 __aem_usage
+		 return 0
+	 fi
+
+	 if ! `which raem > /dev/null 2>&1`; then
+		 __aem_fail "Unable to find 'raem' binary in PATH";
+		 return 1
+	 fi
+
+	 local aem_cmd="$1"
+	 shift
+
+	 case "$aem_cmd" in
+	 add)
+		 __aem_add
+		 ;;
+	 remove)
+		 __aem_remove "$@"
+		 ;;
+	 key)
+		 __aem_key "$@"
+		 ;;
+	 list)
+		 __aem_list
+		 ;;
+	 use)
+		 __aem_use "$@"
+		 ;;
+	 *)
+		 __aem_fusage "Unknown command: $aem_cmd"
+		 return 1
+	 esac
+
+	 return $?
+}
+
+# Check for default account
+DEFAULT=$(raem --print-default-acct)
+if [ $? -eq 0 ]; then
+	__aem_use "$DEFAULT"
+fi
+
+# Local Variables:
+# mode: shell-script
+# End:
